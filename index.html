@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>حاسبة التمويل العقاري والشخصي</title>
+  <style>
+    body {
+      font-family: 'Tajawal', sans-serif;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: #ffffff;
+      padding: 20px;
+      margin-top: 30px;
+      border: 2px solid #006400;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 1em;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #006400;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h1>حاسبة التمويل</h1>
+
+<div class="container" id="form-container">
+  <div id="questions"></div>
+  <button onclick="nextQuestion()">التالي</button>
+</div>
+
+<script>
+const questions = [
+  {q: "ما هو الراتب الشهري؟", id: "salary", type: "number"},
+  {q: "نوع التمويل العقاري؟", id: "supportType", type: "select", options: ["مدعوم مع باقة مقدمة", "مدعوم دعم شهري فقط", "غير مدعوم"]},
+  {q: "هل لديك التزامات مالية؟", id: "hasCommitments", type: "select", options: ["لا", "نعم"]},
+  {q: "نوع الالتزام؟", id: "commitmentType", type: "select", options: ["قرض شخصي", "سيارة"], condition: (a) => a.hasCommitments === "نعم"},
+  {q: "كم قيمة القسط الشهري للالتزام؟", id: "commitmentValue", type: "number", condition: (a) => a.hasCommitments === "نعم"},
+  {q: "كم عدد الأشهر المتبقية للقسط؟", id: "commitmentMonths", type: "number", condition: (a) => a.hasCommitments === "نعم"},
+  {q: "هل لديك دفعة أخيرة للسيارة؟", id: "hasBalloon", type: "select", options: ["لا", "نعم"], condition: (a) => a.commitmentType === "سيارة"},
+  {q: "ما قيمة الدفعة الأخيرة؟", id: "balloonValue", type: "number", condition: (a) => a.hasBalloon === "نعم"},
+  {q: "كم عدد أشهر التمويل العقاري المطلوب؟", id: "financeMonths", type: "number"}
+];
+
+let answers = {};
+let current = 0;
+
+function nextQuestion() {
+  const container = document.getElementById("questions");
+  const btn = document.querySelector("button");
+
+  if (current > 0) {
+    const prev = questions[current-1];
+    const input = document.getElementById(prev.id);
+    if (input) {
+      answers[prev.id] = input.value;
+    }
+  }
+
+  // تجاوز الأسئلة بناءً على الشرط
+  while (current < questions.length && questions[current].condition && !questions[current].condition(answers)) {
+    current++;
+  }
+
+  if (current >= questions.length) {
+    calculate();
+    btn.style.display = "none";
+    return;
+  }
+
+  const q = questions[current];
+  let html = `<label>${q.q}</label><br>`;
+  if (q.type === "select") {
+    html += `<select id="${q.id}">`;
+    q.options.forEach(opt => {
+      html += `<option value="${opt}">${opt}</option>`;
+    });
+    html += `</select>`;
+  } else {
+    html += `<input type="${q.type}" id="${q.id}" required>`;
+  }
+  container.innerHTML = html;
+  current++;
+}
+
+function calculate() {
+  const salary = parseFloat(answers.salary) || 0;
+  const supportType = answers.supportType;
+  const hasCommitments = answers.hasCommitments === "نعم";
+  const commitmentType = answers.commitmentType;
+  const commitmentValue = parseFloat(answers.commitmentValue) || 0;
+  const commitmentMonths = parseInt(answers.commitmentMonths) || 0;
+  const hasBalloon = answers.hasBalloon === "نعم";
+  const balloonValue = parseFloat(answers.balloonValue) || 0;
+  const financeMonths = parseInt(answers.financeMonths) || 0;
+
+  // تحديد نسبة الاستقطاع الأساسية
+  let maxDeductionRate = 0;
+  if (supportType === "مدعوم مع باقة مقدمة") {
+    maxDeductionRate = 55;
+  } else if (supportType === "مدعوم دعم شهري فقط") {
+    maxDeductionRate = 65;
+  } else {
+    maxDeductionRate = (salary < 15000) ? 55 : 65;
+  }
+
+  // الالتزام الشهري النهائي
+  let finalCommitment = 0;
+  if (hasCommitments) {
+    if (commitmentType === "قرض شخصي") {
+      finalCommitment = commitmentValue;
+    } else if (commitmentType === "سيارة") {
+      let balloonMonthly = hasBalloon ? (balloonValue / 24) : 0;
+      finalCommitment = commitmentValue + balloonMonthly;
+    }
+  }
+
+  // الراتب × نسبة الاستقطاع ÷ 100 = الحد الأعلى للقسط العقاري مع الالتزامات
+  const maxAllowedWithCommitments = (salary * maxDeductionRate / 100) - finalCommitment;
+  const maxAllowedWithoutCommitments = (salary * maxDeductionRate / 100);
+
+  const monthlyInstallmentFirstPhase = (maxAllowedWithCommitments > 0) ? maxAllowedWithCommitments : 0;
+  const monthlyInstallmentSecondPhase = maxAllowedWithoutCommitments;
+
+  const totalFinanceFirstPhase = monthlyInstallmentFirstPhase * financeMonths;
+  const totalFinanceSecondPhase = monthlyInstallmentSecondPhase * financeMonths;
+
+  document.getElementById("questions").innerHTML = `
+    <h3>نتائج الحساب:</h3>
+    <p>الراتب: <strong>${salary.toFixed(2)} ريال</strong></p>
+    <p>نوع التمويل: <strong>${supportType}</strong></p>
+    <p>الالتزامات الشهرية: <strong>${finalCommitment.toFixed(2)} ريال</strong></p>
+    <p>الاستقطاع الأقصى المسموح به: <strong>${maxDeductionRate}%</strong></p>
+    <hr>
+    <p>القسط الشهري العقاري (خلال فترة الالتزام): <strong>${monthlyInstallmentFirstPhase.toFixed(2)} ريال</strong></p>
+    <p>القسط الشهري العقاري (بعد انتهاء الالتزامات): <strong>${monthlyInstallmentSecondPhase.toFixed(2)} ريال</strong></p>
+  `;
+}
+
+// بدء عرض الأسئلة
+nextQuestion();
+</script>
+
+</body>
+</html>
